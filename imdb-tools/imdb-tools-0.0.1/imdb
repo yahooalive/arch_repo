@@ -225,7 +225,7 @@ def do_tag(_: list[str]) -> int | str:
             filename = f"{title} ({year}, {feature_id})(eng).mp4"
             filename = filename.replace("/", " - ").replace(":", " -").replace("*", "-")
 
-            print(f'curl -Go - "{image}" | convert -resize 600 - cover.jpg')
+            print(f'curl -Go - "{image}" | magick convert -resize 600 - cover.jpg')
             print(
                 (
                     f"mp4tags -s '{title}' -y {year} -m '{plot}' -I {feature_id}"
@@ -353,7 +353,7 @@ def do_ffmpeg_tag(_: list[str]) -> int | str:
 
 
 def get_help():
-    return f"{os.path.basename(__file__)} search|tv|movie|tag"
+    return f"{os.path.basename(__file__)} search|tv|movie|tag|ff"
 
 
 def main(argv: list[str]) -> int | str:
