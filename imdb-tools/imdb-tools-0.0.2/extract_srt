@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+set -f
+
+function probe() {
+    local fn="$1"
+
+    ffprobe \
+        -hide_banner \
+        -show_streams \
+        -show_entries stream=index,codec_type:stream_tags=language:disposition=:tags= \
+        -of csv \
+        -loglevel -8 \
+        "$fn" \
+        2>/dev/null
+    echo
+}
+
+function extract() {
+    local filename=$1
+    local track=$2
+    local language=$3
+
+    echo -n "extracting track $track ($language) ... "
+    ffmpeg -y -i "${filename}" -map 0:${track} "${filename%.*}.${track}.srt" >/dev/null 2>&1
+    if [ $? -eq 0 ]
+    then
+        echo done.
+    else
+        echo failed.
+    fi
+}
+
+function main() {
+    local IFS=","
+    local -a line
+    local fn="$1"
+    local -a srts=()
+
+    echo "----------------------------------------------"
+    echo \"$fn\"
+    echo
+    probe "$fn"
+    echo
+
+    while read -a line
+    do
+        if [ ${#line[*]} -eq 4 ]
+        then
+            # if [ ${#line[*]} -eq 3 ] 
+            # then
+            #     line+=("eng")
+            # fi
+            if  [ ${line[2]} = "subtitle" -a ${line[3]} = "eng" ]
+            then
+                extract "$fn" ${line[1]} ${line[3]}
+    		    srts+=("\"${fn%.*}.${line[1]}.srt\"")
+            fi
+        fi
+    done < <(probe "$fn")
+
+    for srt in "${srts[*]}"
+    do
+        echo
+	    echo $srt
+    done
+    echo
+}
+
+if [[ $# -ge 1 ]] 
+then
+    for f in "$@"
+    do
+        if [[ ! -r "$f" ]] 
+        then
+            echo "\"$f\" is not a file"
+            exit 1
+        fi
+    done 
+    for f in "$@"
+    do
+        main "$f"
+    done
+else
+    echo $(basename "$0") "[FILES]"
+fi

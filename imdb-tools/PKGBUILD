@@ -1,14 +1,14 @@
 pkgname=imdb-tools
-pkgver=0.0.1
-pkgrel=2
+pkgver=0.0.2
+pkgrel=1
 pkgdesc="search IMDb and ffmpeg helper"
 arch=('any')
 license=('GPL')
 depends=('python-beautifulsoup4' 'bash' 'ffmpeg')
 source=("$pkgname-$pkgver.tar.xz")
-b2sums=('5ca1e8b6f8bc78851ec5c46a3d0138a4f36b750633ef2f9882f98ff66585d5e3f51f1d87b21034768ca408c7a7f107ade3dd53876d6701a2b5d57fe77f9e0ea3')
+b2sums=('386790f675fd9b7d8572929a303f92759c514994e9267e612a31ccf981e8009c1327de60488e4d373384af05bdbbb0469bd15e74e82d49cbaddfcbdcd7b5b976')
 package() {
 	cd "$pkgname-$pkgver"
 	mkdir -p "$pkgdir/usr/bin/"
-	cp ff ffid imdb imdb_de srt "$pkgdir/usr/bin/"
+	cp extract_srt ff ffid imdb imdb_de srt "$pkgdir/usr/bin/"
 }
