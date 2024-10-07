@@ -1,0 +1,375 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import json
+import os
+import sys
+import urllib
+import hashlib
+
+from functools import reduce
+from typing import Any
+from html import unescape
+
+import requests
+from bs4 import BeautifulSoup
+
+
+class IMDbException(Exception):
+    """general exception"""
+
+
+def cached(func):
+    def wrapper(url: str) -> str:
+        filename = "cache/" + hashlib.sha256(url.encode("utf-8")).hexdigest()
+        if os.environ.get("DEBUG", None) is None:
+            return func(url)
+        if os.path.exists(filename):
+            with open(filename, mode="r", encoding="utf-8") as file:
+                return file.read()
+        else:
+            if not os.path.isdir("cache"):
+                os.mkdir("cache")
+            data = func(url)
+            with open(filename, mode="w", encoding="utf-8") as file:
+                file.write(data)
+            return data
+
+    return wrapper
+
+
+@cached
+def get(url: str, timeout: int = 10) -> str:
+    headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "en;q=1.0"}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=timeout)
+    except requests.exceptions.RequestException as ex:
+        raise IMDbException(ex) from ex
+    except TimeoutError as ex:
+        raise IMDbException(ex) from ex
+
+    if response.ok:
+        return response.text
+
+    raise IMDbException("invalid response")
+
+
+def get_soup(url: str) -> BeautifulSoup:
+    return BeautifulSoup(get(url), "html.parser")
+
+
+def get_json(url: str) -> dict:
+    return json.loads(get(url))
+
+
+def get_next_data(url: str) -> dict:
+    soup = get_soup(url)
+    data = soup.find(id="__NEXT_DATA__")
+    return json.loads(data.text)
+
+
+def safe_get(collection: dict[str, Any], path: str, sep: str = "."):
+    return reduce(
+        lambda acc, it: acc.get(it, None) if acc is not None else None,
+        path.split(sep),
+        collection,
+    )
+
+
+def filter_response(data: list | dict, mapping: dict):
+    if isinstance(data, list):
+        return [filter_response(entry, mapping) for entry in data]
+
+    if isinstance(data, dict):
+        return {
+            mapping[path]: value
+            for path in mapping
+            if (
+                value := reduce(
+                    lambda acc, it: acc.get(it, None) if acc is not None else None,
+                    path.split("."),
+                    data,
+                )
+            )
+            is not None
+        }
+
+    if data is None:
+        return []
+
+    raise IMDbException("Invalid data")
+
+
+def do_search(argv: list[str]) -> int | str:
+    url = "https://v3.sg.media-imdb.com/suggestion/x/{}.json"
+
+    response = get_json(url.format(urllib.parse.quote(" ".join(argv))))
+
+    mapping = {
+        "id": "id",
+        "i.imageUrl": "image",
+        "l": "title",
+        "qid": "type",
+        "y": "year",
+        "s": "info",
+    }
+
+    result = filter_response(response["d"], mapping)
+    print(json.dumps(result, sort_keys=True, indent=2))
+
+    return 0
+
+
+def do_tv(argv: list[str]) -> int | str:
+    s = argv[1]
+    if s == "0":
+        s = "Unknown"
+
+    url = f"https://www.imdb.com/title/{argv[0]}/episodes/?season={s}"
+
+    mapping = {
+        "id": "id",
+        "type": "type",
+        "season": "season",
+        "image.url": "image",
+        "episode": "episode",
+        "titleText": "title",
+        "releaseYear": "year",
+        "plot": "plot",
+    }
+
+    season = get_next_data(url)
+    show = safe_get(season, "props.pageProps.contentData.entityMetadata.titleText.text")
+    episodes = filter_response(
+        safe_get(season, "props.pageProps.contentData.section.episodes.items"), mapping
+    )
+    episodes = [{**episode, "show": show} for episode in episodes]
+
+    print(json.dumps(episodes, sort_keys=True, indent=2))
+
+    return 0
+
+
+def do_movie(argv: list[str]) -> int | str:
+    url = "https://www.imdb.com/title/{}/"
+    mapping: dict[str, str] = {
+        "id": "id",
+        "plot.plotText.plainText": "plot",
+        "primaryImage.url": "image",
+        "releaseYear.year": "year",
+        "titleText.text": "title",
+        "titleType.text": "type",
+    }
+
+    movie = get_next_data(url.format(argv[0]))
+    properties = safe_get(movie, "props.pageProps.aboveTheFoldData")
+    result = {**filter_response(properties, mapping), "type": "movie"}
+    print(json.dumps(result, sort_keys=True, indent=2))
+
+    return 0
+
+
+def do_tag(_: list[str]) -> int | str:
+    stdin = json.loads(sys.stdin.read())
+
+    if isinstance(stdin, list):
+        for episode in stdin:
+            assert episode["type"] == "tvEpisode"
+            episode_id = episode["id"][2:]
+            if episode["season"] == "Unknown":
+                episode["season"] = 0
+            season = int(episode["season"])
+            image = episode["image"]
+            if episode["episode"] == "Unknown":
+                episode["episode"] = 0
+            episode_nr = int(episode["episode"])
+            title = unescape(episode["title"]).replace("'", "'\\''")
+            year = episode["year"] if "years" in episode.keys() else 0
+            plot = episode.get("plot", "")
+            if plot != "":
+                plot = unescape(episode["plot"])
+                plot = plot.replace("'", "'\\''")
+                plot = f" -m '{plot}'"
+            show = episode["show"].replace("'", "'\\''")
+            filename = f"{show} - S{season:02d}E{episode_nr:02d} - {title}.mp4"
+            if season == 0 or episode_nr == 0:
+                filename = f"{show} - {title}.mp4"
+                print(
+                    (
+                        f"mp4tags -s '{show} - {title}' -y {year}{plot} -I {episode_id}"
+                        f" -i tvshow -S '{show}' "
+                        f"-e '' -E '' -c '' 'S{season:02d}E{episode_nr:02d}.mp4'"
+                    )
+                )
+            else:
+                print(
+                    (
+                        f"mp4tags -s '{show} - S{season:02d}E{episode_nr:02d} - {title}' -y {year}{plot} -I {episode_id}"
+                        f" -i tvshow -S '{show}' -M {episode_nr} -n {season} "
+                        f"-e '' -E '' -c '' 'S{season:02d}E{episode_nr:02d}.mp4'"
+                    )
+                )
+            filename = filename.replace("/", " - ").replace(":", " -").replace("*", "-")
+            print((f"mv 'S{season:02d}E{episode_nr:02d}.mp4' '{filename}'"))
+            print()
+
+    if isinstance(stdin, dict):
+        if stdin["type"] == "movie":
+            image = stdin["image"]
+            title = unescape(stdin["title"]).replace("'", "'\\''")
+            year = stdin["year"]
+            plot = unescape(stdin["plot"])
+            plot = plot.replace("'", "'\\''")
+            feature_id = stdin["id"][2:]
+            filename = f"{title} ({year}, {feature_id})(eng).mp4"
+            filename = filename.replace("/", " - ").replace(":", " -").replace("*", "-")
+
+            print(f'curl -Go - "{image}" | convert -resize 600 - cover.jpg')
+            print(
+                (
+                    f"mp4tags -s '{title}' -y {year} -m '{plot}' -I {feature_id}"
+                    f" -i movie -e '' -E '' -c '' '{filename}'"
+                )
+            )
+            print(f"mp4art --add cover.jpg '{filename}'")
+            print()
+    return 0
+
+
+def do_ffmpeg_tag(_: list[str]) -> int | str:
+    stdin = json.loads(sys.stdin.read())
+
+    if isinstance(stdin, list):
+        for episode in stdin:
+            assert episode["type"] == "tvEpisode"
+            episode_id = episode["id"][2:]
+            if episode["season"] == "Unknown":
+                episode["season"] = 0
+            season = int(episode["season"])
+            image = episode["image"]
+            if episode["episode"] == "Unknown":
+                episode["episode"] = 0
+            episode_nr = int(episode["episode"])
+            title = unescape(episode["title"]).replace("'", "'\\''")
+            year = episode["year"] if "years" in episode.keys() else 0
+            plot = episode.get("plot", "")
+            if plot != "":
+                plot = unescape(episode["plot"])
+                plot = plot.replace("'", "'\\''")
+                plot = f" -metadata description='{plot}'"
+            show = episode["show"].replace("'", "'\\''")
+            filename = f"{show} - S{season:02d}E{episode_nr:02d} - {title}.mp4"
+            filename = filename.replace("/", " - ").replace(":", " -").replace("*", "-")
+            if season == 0 or episode_nr == 0:
+                filename = f"{show} - {title}.mp4"
+
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "warning",
+                "-i",
+                f"S{season:02d}E{episode_nr:02d}.mp4",
+                "-map",
+                "0",
+                "-c",
+                "copy",
+                "-metadata",
+                f"title='{show} - S{season:02d}E{episode_nr:02d} - {title}'",
+                "-metadata",
+                f"show='{show}'",
+                "-metadata",
+                "media_type=10",
+                "-metadata",
+                f"season_number={season}",
+                "-metadata",
+                f"episode_sort={episode_nr}",
+                "-metadata",
+                f"season_number={season}",
+                "-metadata",
+                f"artist='{show}'",
+                "-metadata",
+                f"date={year}{plot}",
+                "-map_metadata:c",
+                "-1",
+                "-movflags",
+                "faststart",
+                f"'{filename}'",
+            ]
+
+            print(" ".join(cmd))
+            print()
+
+    if isinstance(stdin, dict):
+        if stdin["type"] == "movie":
+            image = stdin["image"]
+            title = unescape(stdin["title"]).replace("'", "'\\''")
+            year = stdin["year"]
+            plot = unescape(stdin["plot"])
+            plot = plot.replace("'", "'\\''")
+            feature_id = stdin["id"][2:]
+            filename = f"{title} ({year}, {feature_id})(eng).mp4"
+            filename = filename.replace("/", " - ").replace(":", " -").replace("*", "-")
+
+            print(f'curl -Go - "{image}" | convert -resize 600 - cover.jpg')
+
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "warning",
+                "-i",
+                "out.mp4",
+                "-i",
+                "cover.jpg",
+                "-map",
+                "0",
+                "-map",
+                "1",
+                "-c",
+                "copy",
+                "-metadata",
+                f"title='{title}'",
+                "-disposition:s:v:1",
+                "attached_pic",
+                "-metadata",
+                "media_type=9",
+                "-metadata",
+                f"date={year}",
+                "-metadata",
+                f"description='{plot}'",
+                "-map_metadata:c",
+                "-1",
+                "-movflags",
+                "faststart",
+                f"'{filename}'",
+            ]
+
+            print(" ".join(cmd))
+            print()
+
+    return 0
+
+
+def get_help():
+    return f"{os.path.basename(__file__)} search|tv|movie|tag"
+
+
+def main(argv: list[str]) -> int | str:
+    commands = {
+        "search": do_search,
+        "tv": do_tv,
+        "tag": do_tag,
+        "ff": do_ffmpeg_tag,
+        "movie": do_movie,
+    }
+
+    if len(argv) > 1 and argv[1].lower() in commands:
+        return commands[argv[1].lower()](argv[2:])
+
+    return get_help()
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
