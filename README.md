@@ -12,13 +12,16 @@ rename `arch_repo.db.tar.gz` and `arch_repo.files.tar.gz` to `arch_repo.db` and 
 ## Commands
 
 ```sh
-makepkg
-mv arch_repo.db arch_repo.db.tar.gz
-mv arch_repo.files arch_repo.files.tar.gz
-repo-add arch_repo.db.tar.gz yt-dlp-link-2021.12.14-2-any.pkg.tar.zst
-repo-remove yt-dlp-link-2021.12.14-2
-rm arch_repo.db arch_repo.files
-rm arch_repo.db.tar.gz.old arch_repo.files.tar.gz.old
+rm -r x86_64
+mkdir x86_64
+cd gnome-shell-extension-gsconnect-47
+makepkg -f
+mv *.tar.zst ../x86_64
+cd ../imdb-tools
+makepkg -f
+mv *.tar.zst ../x86_64
+cd ../x86_64
+repo-add arch_repo.db.tar.gz *.tar.zst
 mv arch_repo.db.tar.gz arch_repo.db
 mv arch_repo.files.tar.gz arch_repo.files
 ```

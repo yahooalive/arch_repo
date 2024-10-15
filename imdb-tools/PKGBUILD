@@ -1,12 +1,12 @@
 pkgname=imdb-tools
 pkgver=0.0.2
-pkgrel=1
+pkgrel=2
 pkgdesc="search IMDb and ffmpeg helper"
 arch=('any')
 license=('GPL')
 depends=('python-beautifulsoup4' 'bash' 'ffmpeg')
 source=("$pkgname-$pkgver.tar.xz")
-b2sums=('386790f675fd9b7d8572929a303f92759c514994e9267e612a31ccf981e8009c1327de60488e4d373384af05bdbbb0469bd15e74e82d49cbaddfcbdcd7b5b976')
+b2sums=('252c0fdebed84dffafe15692d95cc9ea09ad9a7f74b5ac846c9f77da19611ab7b81a9fd2fc7e95da2106de4e617c152b84d49940ef3088d03c7f548de4edf78a')
 package() {
 	cd "$pkgname-$pkgver"
 	mkdir -p "$pkgdir/usr/bin/"

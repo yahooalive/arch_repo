@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-ffmpeg -i "$1" -loglevel -8  -map 0:$2 -f srt - | cat | less -

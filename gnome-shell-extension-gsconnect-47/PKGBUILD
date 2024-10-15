@@ -1,0 +1,48 @@
+# Maintainer: Mohammadreza Abdollahzadeh < morealaz at gmail dot com >
+# Contributer: Térence Clastres <t dot clastres at gmail dot com>
+pkgname=gnome-shell-extension-gsconnect-47
+pkgver=57.r33.g3758807f
+pkgrel=1
+pkgdesc="KDE Connect implementation with GNOME Shell integration"
+arch=('any')
+url="https://github.com/GSConnect/gnome-shell-extension-gsconnect"
+license=('GPL')
+depends=('gnome-shell')
+optdepends=('evolution-data-server: Contacts integration (Evolution)'
+            'libgdata: Contacts integration (GNOME Online Accounts)'
+            'python-nautilus: Nautilus integration'
+            'nemo-python: Nemo integration'
+            'gsound: Themed sound effects')
+makedepends=('git' 'meson' 'eslint')
+provides=("${pkgname%-47}")
+conflicts=("${pkgname%-47}")
+install="${pkgname%-47}.install"
+source=("${pkgname%-47}::git+${url}")
+md5sums=('SKIP')
+
+pkgver() {
+  cd "${pkgname%-47}"
+  git describe --long --tags | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g;s/rc.\.//'
+}
+
+prepare() {
+  cd "${pkgname%-47}"
+  git apply -3 ../../gnome-shell-47.diff
+}
+
+build() {
+  cd "${pkgname%-47}"
+  arch-meson --buildtype=plain build
+  ninja -C build
+}
+
+check() {
+  cd "${pkgname%-47}"
+  arch-meson check
+}
+
+package() {
+  cd "${pkgname%-47}"
+  DESTDIR="${pkgdir}" ninja -C build install
+}
+# vim:set ts=4 sw=4 et:
