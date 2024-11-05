@@ -11,16 +11,11 @@ rename `arch_repo.db.tar.gz` and `arch_repo.files.tar.gz` to `arch_repo.db` and 
 
 ## Commands
 
+copy *.pkg.tar.zst to x86_64, then
+
 ```sh
-rm -r x86_64
-mkdir x86_64
-cd gnome-shell-extension-gsconnect-47
-makepkg -f
-mv *.tar.zst ../x86_64
-cd ../imdb-tools
-makepkg -f
-mv *.tar.zst ../x86_64
-cd ../x86_64
+cd x86_64
+rm arch_repo.db arch_repo.files
 repo-add arch_repo.db.tar.gz *.tar.zst
 mv arch_repo.db.tar.gz arch_repo.db
 mv arch_repo.files.tar.gz arch_repo.files
